@@ -46,21 +46,21 @@ C- Check the following:
 		
 3- Check Asnible authentication method and service account key path
 
-		auth_kind: serviceaccount
+	auth_kind: serviceaccount
         auth_key: ./keys/gwm-ansible-key.json
 		
 4- Choose Windows image that you want to use on all of your GWM servers
 
-		windows_image: projects/windows-cloud/global/images/windows-server-2016-dc-v20220314
-		
-		---
-		
-		Note: Recommended operating system—Microsoft Windows Server 2016.
-		https://support.google.com/workspacemigrate/answer/9222864
-		
-		You can find all windows server images using the following command on Cloud Shell or using Google Cloud SDK:
-		
-		gcloud compute images list --uri | grep windows-server
+	windows_image: projects/windows-cloud/global/images/windows-server-2016-dc-v20220314
+
+	---
+
+	Note: Recommended operating system—Microsoft Windows Server 2016.
+	https://support.google.com/workspacemigrate/answer/9222864
+
+	You can find all windows server images using the following command on Cloud Shell or using Google Cloud SDK:
+
+	gcloud compute images list --uri | grep windows-server
 		
 5- Specify machines types and disks size
        
@@ -71,6 +71,9 @@ C- Check the following:
 	
 	We need at least 4 Windows server machines:
 	
+	Check the following links for more about Machine types on GCP:
+	https://cloud.google.com/compute/docs/machine-types
+	https://gcpinstances.doit-intl.com/
 	
 	# ---GWN Platform server---
 	Recomended: Platform server—One Windows Server with at least 4 cores, 16 GB of RAM, and 200 GB SSD.
@@ -103,7 +106,7 @@ C- Check the following:
 	Recomended: At least one Windows server, each with at least 4 cores, 32 GB of RAM, and 200 GB SSD
 			
         # Machine type for GWM noder servers
-        node_machine_type: e2-standard-16
+        node_machine_type: e2-highmem-4
         # Your SSD disk size for GWM noder servers
         node_disk_size: 200
 		
