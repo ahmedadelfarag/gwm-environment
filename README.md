@@ -3,23 +3,29 @@ This Ansible configuration file to build Google Workspace Migrate required serve
 
 # Preparing
 
-1- Creat a project on GCP:
+1- Creat a project on GCP
 	
-		1- Keep the project ID in your notes.
-		2- Enable Compute Engine API
+	1- Keep the project ID in your notes.
+	2- Enable Compute Engine API
 	
-2- Install Ansible on your machine
-
-		- Check this Url : https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html
-		- Check this requisites for GCP : https://docs.ansible.com/ansible/latest/scenario_guides/guide_gce.html#requisites
+2- Install Ansible on your machine Check this Url to install Ansible
+	
+	https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html
+	
+3- Check this requisites for GCP module with Ansible
+	
+	https://docs.ansible.com/ansible/latest/scenario_guides/guide_gce.html#requisites
 		
 3- Create a Service account to authenticate Ansible with your project
-	only need this roles 
+
+	Only need this roles :
 	
-		- Compute Admin
-		- Compute Network Admin
-		
-		Save the Key as (gwm-ansible-key.json) at keys folder
+	- Compute Admin
+	- Compute Network Admin
+
+4- Creat a Key for your service account with the following name (save it at keys folder): 
+	
+	gwm-ansible-key.json
 
 # Changing varibales
 
@@ -105,5 +111,9 @@ C- Check the following:
         # Give your GMW node server ID that you want and you can chenge it to create node servers as needed
         node_id: 1
 		
-		
-		
+# Running the playbook
+
+Navigate to your playbook and run the following command:
+	
+	ansible-playbook gwm-servers.yaml
+
