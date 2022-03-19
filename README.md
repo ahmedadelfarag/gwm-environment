@@ -87,7 +87,7 @@ C- Check the following:
 	Database servers—2 Windows Servers, each with at least 16 cores, 64 GB of RAM, and a separate SSD for the database data.
 		
         # ---GWM MySQL Database---
-	Recomended: recommend approximately 1 TB per 100 million objects that you want to scan and migrate
+		Recomended: recommend approximately 1 TB per 100 million objects that you want to scan and migrate
 		
         # Machine type for GWM MySQL Database
         mdb_machine_type: e2-standard-16
@@ -95,7 +95,7 @@ C- Check the following:
         mdb_disk_size: 50
 
         # ---GWM CouchDB Database---
-	Recomended: recommend approximately 1 TB per 40 million objects that you want to scan and migrate.
+		Recomended: recommend approximately 1 TB per 40 million objects that you want to scan and migrate.
 			
         # Machine type for GWM CouchDB Database
         cdb_machine_type: e2-standard-16
@@ -103,7 +103,7 @@ C- Check the following:
         cdb_disk_size: 50
 
         # ---GWM node server---
-	Recomended: At least one Windows server, each with at least 4 cores, 32 GB of RAM, and 200 GB SSD
+		Recomended: At least one Windows server, each with at least 4 cores, 32 GB of RAM, and 200 GB SSD
 			
         # Machine type for GWM noder servers
         node_machine_type: e2-highmem-4

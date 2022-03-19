@@ -9,6 +9,7 @@
         #Do not forget to Enable Compute Engine API
 
         # ---- Default Region and Zone ----
+        
         # Your desierd region for your servers
         default_region: europe-west1
         # Your desierd zone for your servers
