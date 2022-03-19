@@ -1,0 +1,363 @@
+---
+- hosts: localhost
+  connection: local
+
+  vars:
+
+        # Your GCP Project ID 
+        project: PROJECT_ID
+        #Do not forget to Enable Compute Engine API
+
+        # ---- Default Region and Zone ----
+        # Your desierd region for your servers
+        default_region: europe-west1
+        # Your desierd zone for your servers
+        default_zone: "{{ default_region }}-b"
+
+
+        # --- Asnible authentication method ---
+        # for this project only need this roles (Compute Admin, Compute Network Admin)
+        auth_kind: serviceaccount
+        # authentication key path
+        auth_key: ./keys/gwm-ansible-key.json
+
+        # Windows image that you want to use on all of your GWM servers
+        windows_image: projects/windows-cloud/global/images/windows-server-2016-dc-v20220314
+        
+
+        # ---GWN Platform server---
+        # Machine type for GWM Platform Server
+        ps_machine_type: e2-standard-4
+        # SSD disk size for GWM Platform Server
+        ps_disk_size: 200
+        
+        # ---GWM MySQL Database---
+        # Machine type for GWM MySQL Database
+        mdb_machine_type: e2-standard-16
+        # Your SSD disk size for GWM MySQL Database
+        mdb_disk_size: 50
+
+        # ---GWM CouchDB Database---
+        #Machine type for GWM CouchDB Database
+        cdb_machine_type: e2-standard-16
+        # SSD disk size for GWM CouchDB Database
+        cdb_disk_size: 50
+
+        # ---GWM node server---
+        #Machine type for GWM noder servers
+        node_machine_type: e2-highmem-4
+        # Your SSD disk size for GWM noder servers
+        node_disk_size: 200
+        # GMW node server ID
+        node_id: 1
+
+        # Default network name change it if you would to
+        networkname: "gwm-network-{{ project }}"
+
+  tasks:
+
+# Establishing the network
+
+    - name: create a network for the migration
+      google.cloud.gcp_compute_network:
+        name: "{{ networkname }}"
+        auto_create_subnetworks: 'false'
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+      register: gwm_network
+
+  #Create a subnet
+
+    - name: create a subnet
+      google.cloud.gcp_compute_subnetwork:
+          name: subnet-a
+          region: "{{ default_region }}"
+          network: "{{ gwm_network }}"
+          ip_cidr_range: 10.0.1.0/24
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_subnet
+
+  #Create firewall rules
+
+    - name: create a firewall rule to allow RDP to instances
+      google.cloud.gcp_compute_firewall:
+        name: allow-rdp-to-gwm-servers
+        network: "{{ gwm_network }}"
+        allowed:
+        - ip_protocol: tcp
+          ports:
+          - '3389'
+        source_ranges:
+        - '0.0.0.0/0'
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+
+    - name: create a firewall rule to allow ICMP to instances
+      google.cloud.gcp_compute_firewall:
+        name: allow-icmp-to-gwm-servers
+        network: "{{ gwm_network }}"
+        allowed:
+        - ip_protocol: icmp
+        source_ranges:
+        - '0.0.0.0/0'
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+
+    - name: create a firewall rule to allow Google Workspace APIs to instances
+      google.cloud.gcp_compute_firewall:
+        name: allow-gw-apis-to-gwm-servers
+        network: "{{ gwm_network }}"
+        allowed:
+        - ip_protocol: tcp
+          ports:
+          - '443'
+        source_ranges:
+        - '0.0.0.0/0'
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+
+    - name: create a firewall rule to allow internal communication between GWM servers
+      google.cloud.gcp_compute_firewall:
+        name: allow-internal-gwm-communication
+        network: "{{ gwm_network }}"
+        allowed:
+        - ip_protocol: tcp
+          ports:
+          #MySQL port
+          - '3306'
+          #CouchDB Port
+          - '5984'
+          #Communicate bidirectionally
+          - '5131'
+          #Intra-cluster SMB access
+          - '445'
+        source_ranges:
+        - '10.0.1.0/24'
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+
+    - name: create a firewall rule to allow remote powershell from platform server to other GMW servers
+      google.cloud.gcp_compute_firewall:
+        name: allow-pwsh-from-platform-to-all-gwm-servers
+        network: "{{ gwm_network }}"
+        allowed:
+        - ip_protocol: tcp
+          ports:
+          - '5986'
+        target_tags:
+        - gwmserverpwsh
+        source_tags: 
+        - gwmplatformserver
+        project: "{{ project }}"
+        auth_kind: "{{ auth_kind }}"
+        service_account_file: "{{ auth_key }}"
+        state: present
+
+# Establishing the platform server
+
+    - name: create an address for GWM platfrom server
+      google.cloud.gcp_compute_address:
+          name: "gwm-ps-addr-{{ project }}"
+          region: "{{ default_region }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_ps_addr
+
+    - name: create a disk GWM Platform Server
+      google.cloud.gcp_compute_disk:
+          name: "gwmpsdisk-{{ project }}"
+          size_gb: "{{ ps_disk_size }}"
+          source_image: "{{ windows_image }}"
+          type: pd-ssd
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_ps_disk
+
+    - name: creating GWM platform server instance
+      gcp_compute_instance:
+          name: "gwm-ps-{{ project }}"
+          machine_type: e"{{ ps_machine_type }}"
+          disks:
+            - auto_delete: true
+              boot: true
+              source: "{{ gwm_ps_disk }}"
+          network_interfaces:
+            - network: "{{ gwm_network }}"
+              subnetwork: "{{ gwm_subnet }}"
+              access_configs:
+                - name: External NAT
+                  nat_ip: "{{ gwm_ps_addr }}"
+                  type: ONE_TO_ONE_NAT
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          tags:
+              items:
+              - gwmplatformserver
+          state: present
+
+# Establishing MySQL Database instance
+
+    - name: create an address for GWM MySQL Database
+      google.cloud.gcp_compute_address:
+          name: "gwm-mdb-addr-{{ project }}"
+          region: "{{ default_region }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_mdb_addr
+
+    - name: create a disk GWM MySQL Database
+      google.cloud.gcp_compute_disk:
+          name: "gwm-mdb-disk-{{ project }}"
+          size_gb: "{{ mdb_disk_size }}"
+          source_image: "{{ windows_image }}"
+          type: pd-ssd
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_mdb_disk
+
+    - name: creating GWM MySQL Database
+      gcp_compute_instance:
+          name: "gwm-mdb-{{ project }}"
+          machine_type: "{{ mdb_machine_type }}"
+          disks:
+            - auto_delete: true
+              boot: true
+              source: "{{ gwm_mdb_disk }}"
+          network_interfaces:
+            - network: "{{ gwm_network }}"
+              subnetwork: "{{ gwm_subnet }}"            
+              access_configs:
+                - name: External NAT
+                  nat_ip: "{{ gwm_mdb_addr }}"
+                  type: ONE_TO_ONE_NAT
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          tags:
+              items:
+              - gwmserverpwsh
+          state: present          
+
+# Establishing CouchDB instance
+
+    - name: create an address for GWM CouchDB Database
+      google.cloud.gcp_compute_address:
+          name: "gwm-cdb-addr-{{ project }}"
+          region: "{{ default_region }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_cdb_addr
+
+    - name: create a disk GWM CouchDB Server
+      google.cloud.gcp_compute_disk:
+          name: "gwm-cdb-disk-{{ project }}"
+          size_gb: "{{ cdb_disk_size }}"
+          source_image: "{{ windows_image }}"
+          type: pd-ssd
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_cdb_disk
+
+    - name: creating GWM CouchDB server instance
+      gcp_compute_instance:
+          name: "gwm-cdb-server-{{ project }}"
+          machine_type: "{{ cdb_machine_type }}"
+          disks:
+            - auto_delete: true
+              boot: true
+              source: "{{ gwm_cdb_disk }}"
+          network_interfaces:
+            - network: "{{ gwm_network }}"
+              subnetwork: "{{ gwm_subnet }}"
+              access_configs:
+                - name: External NAT
+                  nat_ip: "{{ gwm_cdb_addr }}"
+                  type: ONE_TO_ONE_NAT
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          tags:
+              items:
+              - gwmserverpwsh
+          state: present          
+
+#Creating a node server instance
+
+    - name: create an address for GWN node server
+      google.cloud.gcp_compute_address:
+          name: "gwm-node-{{ node_id }}-addr"
+          region: "{{ default_region }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_node_addr
+
+    - name: create a disk GWM node Server
+      google.cloud.gcp_compute_disk:
+          name: "gwm-node-{{ node_id }}-disk-{{ project }}"
+          size_gb: "{{ node_disk_size }}"
+          source_image: "{{ windows_image }}"
+          type: pd-ssd
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          state: present
+      register: gwm_node_disk
+
+    - name: creating google workspace migrate node-"{{ node_id }}"g server
+      gcp_compute_instance:
+          name: "gwm-node-{{ node_id }}-{{ project }}"
+          machine_type: "{{ node_machine_type }}"
+          disks:
+            - auto_delete: true
+              boot: true
+              source: "{{ gwm_node_disk }}"
+          network_interfaces:
+            - network: "{{ gwm_network }}"
+              subnetwork: "{{ gwm_subnet }}"
+              access_configs:
+                - name: External NAT
+                  nat_ip: "{{ gwm_node_addr }}"
+                  type: ONE_TO_ONE_NAT
+          zone: "{{ default_zone }}"
+          project: "{{ project }}"
+          auth_kind: "{{ auth_kind }}"
+          service_account_file: "{{ auth_key }}"
+          tags:
+              items:
+              - gwmserverpwsh
+          state: present
