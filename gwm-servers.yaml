@@ -5,49 +5,64 @@
   vars:
 
         # Your GCP Project ID 
-        project: PROJECT_ID
+        project: gwm-adel-test-proj
         #Do not forget to Enable Compute Engine API
 
         # ---- Default Region and Zone ----
         
-        # Your desierd region for your servers
+        # Your desired region for your servers
         default_region: europe-west1
-        # Your desierd zone for your servers
+        # Your desired zone for your servers
         default_zone: "{{ default_region }}-b"
 
 
-        # --- Asnible authentication method ---
+        # --- Ansible authentication method ---
         # for this project only need this roles (Compute Admin, Compute Network Admin)
         auth_kind: serviceaccount
         # authentication key path
         auth_key: ./keys/gwm-ansible-key.json
 
         # Windows image that you want to use on all of your GWM servers
-        windows_image: projects/windows-cloud/global/images/windows-server-2016-dc-v20220314
+        windows_image: projects/windows-cloud/global/images/windows-server-2016-dc-v20230111
         
 
-        # ---GWN Platform server---
+        # ---GWM Platform Server---
+        #Documentation Recomendation for Platform server : One Windows Server with at least 4 cores, 16 GB of RAM, and 200 GB SSD.
+
         # Machine type for GWM Platform Server
         ps_machine_type: e2-standard-4
         # SSD disk size for GWM Platform Server
         ps_disk_size: 200
         
+         # ---GWM Databases Serverers---
+
+        #Documentation Recomendation for Database servers : 2 Windows Servers, each with at least 16 cores, 64 GB of RAM, and a separate SSD for the database data.
+        #Our Recommendation : To save costs wil start with 8 cores, 32 GB of RAM and Increase it if needed.
+
         # ---GWM MySQL Database---
+        #Documentation Recomendation: approximately 1 TB per 100 million objects that you want to scan and migrate
+
         # Machine type for GWM MySQL Database
-        mdb_machine_type: e2-standard-16
+        mdb_machine_type: e2-standard-8
         # Your SSD disk size for GWM MySQL Database
-        mdb_disk_size: 50
+        mdb_disk_size: 300
 
         # ---GWM CouchDB Database---
+        #Documentation Recomendation: approximately 1 TB per 40 million objects that you want to scan and migrate.
+        
         #Machine type for GWM CouchDB Database
-        cdb_machine_type: e2-standard-16
+        cdb_machine_type: e2-standard-8
         # SSD disk size for GWM CouchDB Database
-        cdb_disk_size: 50
+        cdb_disk_size: 300
 
         # ---GWM node server---
-        #Machine type for GWM noder servers
-        node_machine_type: e2-highmem-4
-        # Your SSD disk size for GWM noder servers
+
+        #Documentation Recomendation for Database servers : 2 Windows Servers, each with at least 16 cores, 64 GB of RAM, and a separate SSD for the database data.
+        #Our Recommendation : To save costs wil start with 4 cores, 16 GB of RAM and add more nodes if needed.
+          
+        #Machine type for GWM node servers
+        node_machine_type: e2-standard-4
+        # Your SSD disk size for GWM node servers
         node_disk_size: 200
         # GMW node server ID
         node_id: 1
@@ -94,20 +109,7 @@
           ports:
           - '3389'
         source_ranges:
-        - '0.0.0.0/0'
-        project: "{{ project }}"
-        auth_kind: "{{ auth_kind }}"
-        service_account_file: "{{ auth_key }}"
-        state: present
-
-    - name: create a firewall rule to allow ICMP to instances
-      google.cloud.gcp_compute_firewall:
-        name: allow-icmp-to-gwm-servers
-        network: "{{ gwm_network }}"
-        allowed:
-        - ip_protocol: icmp
-        source_ranges:
-        - '0.0.0.0/0'
+        - '156.200.228.250/32'
         project: "{{ project }}"
         auth_kind: "{{ auth_kind }}"
         service_account_file: "{{ auth_key }}"
@@ -150,23 +152,6 @@
         service_account_file: "{{ auth_key }}"
         state: present
 
-    - name: create a firewall rule to allow remote powershell from platform server to other GMW servers
-      google.cloud.gcp_compute_firewall:
-        name: allow-pwsh-from-platform-to-all-gwm-servers
-        network: "{{ gwm_network }}"
-        allowed:
-        - ip_protocol: tcp
-          ports:
-          - '5986'
-        target_tags:
-        - gwmserverpwsh
-        source_tags: 
-        - gwmplatformserver
-        project: "{{ project }}"
-        auth_kind: "{{ auth_kind }}"
-        service_account_file: "{{ auth_key }}"
-        state: present
-
 # Establishing the platform server
 
     - name: create an address for GWM platfrom server
@@ -193,9 +178,9 @@
       register: gwm_ps_disk
 
     - name: creating GWM platform server instance
-      gcp_compute_instance:
+      google.cloud.gcp_compute_instance:
           name: "gwm-ps-{{ project }}"
-          machine_type: e"{{ ps_machine_type }}"
+          machine_type: "{{ ps_machine_type }}"
           disks:
             - auto_delete: true
               boot: true
@@ -211,6 +196,14 @@
           project: "{{ project }}"
           auth_kind: "{{ auth_kind }}"
           service_account_file: "{{ auth_key }}"
+          service_accounts: 
+            - email : "monitor@{{ project }}.iam.gserviceaccount.com"
+              scopes:
+                - https://www.googleapis.com/auth/monitoring
+                - https://www.googleapis.com/auth/logging.write
+          metadata:
+            windows-startup-script-ps1: |
+              $LocalTempDir = $env:TEMP; $ChromeInstaller = "ChromeInstaller.exe"; (new-object    System.Net.WebClient).DownloadFile('https://dl.google.com/chrome/install/latest/chrome_installer.exe', "$LocalTempDir\$ChromeInstaller"); & "$LocalTempDir\$ChromeInstaller" /silent /install; $Process2Monitor =  "ChromeInstaller"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { "Still running: $($ProcessesFound -join ', ')" | Write-Host; Start-Sleep -Seconds 2 } else { rm "$LocalTempDir\$ChromeInstaller" -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)
           tags:
               items:
               - gwmplatformserver
@@ -262,7 +255,8 @@
           service_account_file: "{{ auth_key }}"
           tags:
               items:
-              - gwmserverpwsh
+              - gwmmdb
+              - gwmdb
           state: present          
 
 # Establishing CouchDB instance
@@ -311,12 +305,13 @@
           service_account_file: "{{ auth_key }}"
           tags:
               items:
-              - gwmserverpwsh
+              - gwmcdb
+              - gwmdb
           state: present          
 
 #Creating a node server instance
 
-    - name: create an address for GWN node server
+    - name: create an address for GWM node server
       google.cloud.gcp_compute_address:
           name: "gwm-node-{{ node_id }}-addr"
           region: "{{ default_region }}"
@@ -360,5 +355,6 @@
           service_account_file: "{{ auth_key }}"
           tags:
               items:
-              - gwmserverpwsh
+              - gwmnode
+              - "gwmnode-{{ node_id }}"
           state: present
